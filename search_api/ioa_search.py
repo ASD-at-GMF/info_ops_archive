@@ -8,10 +8,18 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 cors = CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
-client = Elasticsearch(
-  "http://localhost:9200",
-  api_key="TFY2ZzNwUUJ5cDNTSi1kZVRZVkk6VVluaFpoTjRSRXUyTnpOUm4ycUMzdw=="
-)
+
+
+es_host = '127.0.0.1'
+es_port = 9200
+es_username = 'elastic'
+es_password = ''
+
+# Create the Elasticsearch client with HTTPS and authentication
+client = Elasticsearch([f'http://{es_host}:{es_port}'], 
+                   #basic_auth=(es_username, es_password), 
+                   api_key="",
+                   verify_certs=False)
 
 
 
@@ -58,16 +66,9 @@ def search_query():
         "query": query
       }
     }, 
-    "aggs" : {
-       "top_users" : {
-          "terms": {
-             "field": "user_screen_name"
-          }
-       }
-    }
   }
   
-  results = client.search(index='tweet_id', body=body)
+  results = client.search(index='tweets_test', body=body)
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
@@ -76,6 +77,44 @@ def search_query():
   })
   
 
-  @app.route('/insights', methods=["GET"])
-  def get_insights():
-     None
+@app.route('/insights', methods=["GET"])
+def get_insights():
+  '''
+  ES aggregations based on search query
+  '''
+  query = request.args.get('query', '')
+  # TODO: Time data histogram
+  body = {
+    "query": {
+      "query_string": {
+        "query": query
+      }
+    }, 
+    "size": 0,
+    "aggs": {
+        "top_users": {
+            "terms": {
+                "field": "user_screen_name"
+            }
+        },
+        "top_hashtags": {
+            "terms": {
+                "field": "hashtags"
+            }
+        },
+        "top_urls": {
+            "terms": {
+                "field": "urls"
+            }
+        }
+    }
+  }
+  
+  results = client.search(index='tweet_id', body=body)
+
+  tweets = [hit['_source'] for hit in results['hits']['hits']]
+  return jsonify({
+    "top_users": results['aggregations']['top_users']['buckets'],
+    "top_hashtags": results['aggregations']['top_hashtags']['buckets'],
+    "top_urls": results['aggregations']['top_urls']['buckets']
+  })
