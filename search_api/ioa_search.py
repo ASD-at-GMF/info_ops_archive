@@ -4,28 +4,25 @@ from elasticsearch import Elasticsearch, helpers
 from flask import Flask, request, jsonify
 from mock_data import mock_tweets
 from flask_cors import CORS
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 app = Flask(__name__)
 cors = CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 
 
-es_host = '127.0.0.1'
-es_port = 9200
-es_username = 'elastic'
-es_password = ''
-
 # Create the Elasticsearch client with HTTPS and authentication
-client = Elasticsearch([f'http://{es_host}:{es_port}'], 
-                   #basic_auth=(es_username, es_password), 
-                   api_key="",
+client = Elasticsearch([f'https://{os.getenv("ES_HOST")}:{os.getenv("ES_PORT")}'], 
+                   basic_auth=(os.getenv("ES_USER"), os.getenv("ES_PASSWORD")),
                    verify_certs=False)
 
 
 
 @app.route('/')
 def hello_world():
-    return 'Hello from Flask!'
+    return 'Welcome to IOA!'
 
 
 # Mock API for returning some tweets
@@ -68,7 +65,7 @@ def search_query():
     }, 
   }
   
-  results = client.search(index='tweets_test', body=body)
+  results = client.search(index='tweets', body=body)
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
@@ -110,7 +107,7 @@ def get_insights():
     }
   }
   
-  results = client.search(index='tweet_id', body=body)
+  results = client.search(index='tweets', body=body)
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
