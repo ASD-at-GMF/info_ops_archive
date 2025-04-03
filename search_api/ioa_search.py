@@ -56,6 +56,11 @@ def search_query():
   Basic ES query given search query
   '''
   query = request.args.get('query', '')
+  page = int(request.args.get('page', 1))  # Default to page 1
+  size = int(request.args.get('size', 10))  # Default page size is 10
+
+    # Calculate 'from' for pagination
+  from_index = (page - 1) * size 
   # query = "follow"
   body = {
     "query": {
@@ -63,6 +68,8 @@ def search_query():
         "query": query
       }
     }, 
+    "from": from_index,  # Start position
+    "size": size  # Number of results per page
   }
   
   results = client.search(index='tweets', body=body)
@@ -70,6 +77,8 @@ def search_query():
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
       "total": results['hits']['total']['value'],
+      "page": page,
+      "size": size,
       "tweets": tweets,
   })
   
