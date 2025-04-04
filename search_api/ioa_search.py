@@ -36,8 +36,6 @@ def mock_search():
     "tweets": tweets,
   })
 
-
-
 # Mock API for insights/stats
 @app.route('/mock_insights', methods=["GET"])
 def mock_insights():
@@ -50,28 +48,96 @@ def mock_insights():
   })
 
 
+
+
+
 @app.route('/search', methods=["GET"])
 def search_query():
   '''
   Basic ES query given search query
   '''
   query = request.args.get('query', '')
+
   page = int(request.args.get('page', 1))  # Default to page 1
   size = int(request.args.get('size', 10))  # Default page size is 10
-
-    # Calculate 'from' for pagination
+  # Calculate 'from' for pagination
   from_index = (page - 1) * size 
-  # query = "follow"
+
+  from_date = request.args.get('from')
+  to_date = request.args.get('to')
+  tweet_language = request.args.get('language')
+  hashtags = request.args.getlist('hashtags')
+  user = request.args.get('user')
+  sort_param = request.args.get('sort_by')
+
+
   body = {
     "query": {
-      "query_string": {
-        "query": query
+      "bool": {
+        "must": [],
+        "filter": []
       }
-    }, 
+    },
     "from": from_index,  # Start position
     "size": size  # Number of results per page
   }
   
+  if query:
+        body['query']['bool']['must'].append({
+            "multi_match": {
+                "query": query,
+                "fields": ["text", "user", "hashtags"],
+                "fuzziness": "AUTO"
+            }
+        })
+  
+  # match userid
+  if user:
+    body['query']['bool']['filter'].append({
+      "term": {"userid.keyword": user}
+    })
+
+  # filter language
+  if tweet_language:
+    body["query"]["bool"]["filter"].append({
+       "term": {"tweet_language.keyword": tweet_language}
+    })
+
+  # add date range if requested
+  if from_date or to_date:
+    date_range = {}
+    if from_date:
+      date_range["gte"] = from_date
+    if to_date:
+      date_range["lte"] = to_date
+    
+    body['query']['bool']['filter'].append({
+      "range": {
+        "tweet_time": date_range
+      }
+    })
+
+  # filter hashtags using AND
+  for hashtag in hashtags:
+    body["query"]["bool"]["filter"].append({
+       "term": {"hashtags": hashtag}
+    })
+
+  # sorting mapping
+  if sort_param:
+    print(sort_param)
+    sort_mapping = {
+      'accuracy': '_score',
+      'time': 'tweet_time',
+      'retweets': 'retweet_count',
+      'likes': 'like_count'
+    }
+
+    body['sort'] = [{str(sort_mapping[sort_param]): {'order': 'desc'}}]
+    print(body['sort'])
+
+
+
   results = client.search(index='tweets', body=body)
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
@@ -89,13 +155,21 @@ def get_insights():
   ES aggregations based on search query
   '''
   query = request.args.get('query', '')
-  # TODO: Time data histogram
+
+  from_date = request.args.get('from')
+  to_date = request.args.get('to')
+  tweet_language = request.args.get('language')
+  hashtags = request.args.getlist('hashtags')
+  user = request.args.get('user')
+
+
   body = {
     "query": {
-      "query_string": {
-        "query": query
+      "bool": {
+        "must": [],
+        "filter": []
       }
-    }, 
+    },
     "size": 0,
     "aggs": {
         "top_users": {
@@ -115,6 +189,47 @@ def get_insights():
         }
     }
   }
+  
+  if query:
+        body['query']['bool']['must'].append({
+            "multi_match": {
+                "query": query,
+                "fields": ["text", "user", "hashtags"],
+                "fuzziness": "AUTO"
+            }
+        })
+  
+  if user:
+    body['query']['bool']['filter'].append({
+      "term": {"userid.keyword": user}
+    })
+
+  # filter language
+  if tweet_language:
+    body["query"]["bool"]["filter"].append({
+       "term": {"tweet_language.keyword": tweet_language}
+    })
+
+  # add date range if requested
+  if from_date or to_date:
+    date_range = {}
+    if from_date:
+      date_range["gte"] = from_date
+    if to_date:
+      date_range["lte"] = to_date
+    
+    body['query']['bool']['filter'].append({
+      "range": {
+        "tweet_time": date_range
+      }
+    })
+
+  # filter hashtags using AND
+  for hashtag in hashtags:
+    body["query"]["bool"]["filter"].append({
+       "term": {"hashtags": hashtag}
+    })
+  
   
   results = client.search(index='tweets', body=body)
 
