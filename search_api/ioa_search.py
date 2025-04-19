@@ -70,6 +70,52 @@ def search_query():
   user = request.args.get('user')
   sort_param = request.args.get('sort_by')
 
+  # If no from/to provided, dynamically find them
+  if not (from_date or to_date):
+      min_max_body = {
+          "query": {
+              "bool": {
+                  "must": [],
+                  "filter": []
+              }
+          },
+          "size": 0,  # no hits, just aggregation
+          "aggs": {
+              "min_date": {"min": {"field": "tweet_time"}},
+              "max_date": {"max": {"field": "tweet_time"}}
+          }
+      }
+
+      # If query is provided, apply it to the aggregation query too
+      if query:
+          min_max_body['query']['bool']['must'].append({
+              "multi_match": {
+                  "query": query,
+                  "fields": ["text", "user", "hashtags"],
+                  "fuzziness": "AUTO"
+              }
+          })
+
+      if user:
+          min_max_body['query']['bool']['filter'].append({
+              "term": {"userid.keyword": user}
+          })
+
+      if tweet_language:
+          min_max_body['query']['bool']['filter'].append({
+              "term": {"tweet_language.keyword": tweet_language}
+          })
+
+      for hashtag in hashtags:
+          min_max_body['query']['bool']['filter'].append({
+              "term": {"hashtags": hashtag}
+          })
+
+      # Search only for min/max dates
+      min_max_result = client.search(index='tweets', body=min_max_body)
+
+      from_date = min_max_result['aggregations']['min_date']['value_as_string']
+      to_date = min_max_result['aggregations']['max_date']['value_as_string']
 
   body = {
     "query": {
@@ -113,7 +159,10 @@ def search_query():
     
     body['query']['bool']['filter'].append({
       "range": {
-        "tweet_time": date_range
+        "tweet_time": {
+           "gte": from_date,
+            "lte": to_date
+          }
       }
     })
 
@@ -239,3 +288,79 @@ def get_insights():
     "top_hashtags": results['aggregations']['top_hashtags']['buckets'],
     "top_urls": results['aggregations']['top_urls']['buckets']
   })
+
+#date histogram 
+
+@app.route('/histogram', methods=["GET"])
+def get_histogram():
+    '''
+    Returns date histogram for tweets
+    '''
+    query = request.args.get('query', '')
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    tweet_language = request.args.get('language')
+    hashtags = request.args.getlist('hashtags')
+    user = request.args.get('user')
+    interval = request.args.get('interval', 'year')  # default to 'day'
+
+    body = {
+        "query": {
+            "bool": {
+                "must": [],
+                "filter": []
+            }
+        },
+        "size": 0,
+        "aggs": {
+            "tweets_over_time": {
+                "date_histogram": {
+                    "field": "tweet_time",
+                    "calendar_interval": interval
+                }
+            }
+        }
+    }
+
+    # query 
+    if query:
+        body['query']['bool']['must'].append({
+            "multi_match": {
+                "query": query,
+                "fields": ["text", "user", "hashtags"],
+                "fuzziness": "AUTO"
+            }
+        })
+    
+    if user:
+        body['query']['bool']['filter'].append({
+            "term": {"userid.keyword": user}
+        })
+
+    if tweet_language:
+        body["query"]["bool"]["filter"].append({
+           "term": {"tweet_language.keyword": tweet_language}
+        })
+
+    if from_date or to_date:
+        date_range = {}
+        if from_date:
+            date_range["gte"] = from_date
+        if to_date:
+            date_range["lte"] = to_date
+        body['query']['bool']['filter'].append({
+          "range": {
+            "tweet_time": date_range
+          }
+        })
+
+    for hashtag in hashtags:
+        body["query"]["bool"]["filter"].append({
+           "term": {"hashtags": hashtag}
+        })
+
+    results = client.search(index='tweets', body=body)
+
+    return jsonify({
+        "buckets": results['aggregations']['tweets_over_time']['buckets']
+    })
