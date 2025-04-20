@@ -6,6 +6,7 @@ from mock_data import mock_tweets
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
+from query_builder import ESQueryBuilder
 
 load_dotenv()
 
@@ -60,8 +61,7 @@ def search_query():
 
   page = int(request.args.get('page', 1))  # Default to page 1
   size = int(request.args.get('size', 10))  # Default page size is 10
-  # Calculate 'from' for pagination
-  from_index = (page - 1) * size 
+  from_index = (page - 1) * size # Calculate 'from' for pagination
 
   from_date = request.args.get('from')
   to_date = request.args.get('to')
@@ -70,75 +70,21 @@ def search_query():
   user = request.args.get('user')
   sort_param = request.args.get('sort_by')
 
+  query_body = ESQueryBuilder()
 
-  body = {
-    "query": {
-      "bool": {
-        "must": [],
-        "filter": []
-      }
-    },
-    "from": from_index,  # Start position
-    "size": size  # Number of results per page
-  }
-  
-  if query:
-        body['query']['bool']['must'].append({
-            "multi_match": {
-                "query": query,
-                "fields": ["text", "user", "hashtags"],
-                "fuzziness": "AUTO"
-            }
-        })
-  
-  # match userid
-  if user:
-    body['query']['bool']['filter'].append({
-      "term": {"userid.keyword": user}
-    })
-
-  # filter language
-  if tweet_language:
-    body["query"]["bool"]["filter"].append({
-       "term": {"tweet_language.keyword": tweet_language}
-    })
-
-  # add date range if requested
-  if from_date or to_date:
-    date_range = {}
-    if from_date:
-      date_range["gte"] = from_date
-    if to_date:
-      date_range["lte"] = to_date
-    
-    body['query']['bool']['filter'].append({
-      "range": {
-        "tweet_time": date_range
-      }
-    })
-
-  # filter hashtags using AND
-  for hashtag in hashtags:
-    body["query"]["bool"]["filter"].append({
-       "term": {"hashtags": hashtag}
-    })
-
-  # sorting mapping
-  if sort_param:
-    print(sort_param)
-    sort_mapping = {
-      'accuracy': '_score',
-      'time': 'tweet_time',
-      'retweets': 'retweet_count',
-      'likes': 'like_count'
-    }
-
-    body['sort'] = [{str(sort_mapping[sort_param]): {'order': 'desc'}}]
-    print(body['sort'])
+  query_body = (
+    query_body
+    .paginate(from_index, size)
+    .add_query(query)
+    .filter_user(user)
+    .filter_language(tweet_language)
+    .filter_date(to_date, from_date)
+    .filter_hashtags(hashtags)
+    .sort_by(sort_param)
+  )
 
 
-
-  results = client.search(index='tweets', body=body)
+  results = client.search(index='tweets_test1', body=query_body.get_query())
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
@@ -161,80 +107,28 @@ def get_insights():
   tweet_language = request.args.get('language')
   hashtags = request.args.getlist('hashtags')
   user = request.args.get('user')
+  interval = request.args.get('interval')
 
+  query_body = ESQueryBuilder()
 
-  body = {
-    "query": {
-      "bool": {
-        "must": [],
-        "filter": []
-      }
-    },
-    "size": 0,
-    "aggs": {
-        "top_users": {
-            "terms": {
-                "field": "user_screen_name"
-            }
-        },
-        "top_hashtags": {
-            "terms": {
-                "field": "hashtags"
-            }
-        },
-        "top_urls": {
-            "terms": {
-                "field": "urls"
-            }
-        }
-    }
-  }
+  query_body = (
+    query_body
+    .add_query(query)
+    .filter_user(user)
+    .filter_language(tweet_language)
+    .filter_date(to_date, from_date)
+    .filter_hashtags(hashtags)
+    .agg_users()
+    .agg_hashtags()
+    .agg_urls()
+    .agg_histogram(interval=interval)
+  )
   
-  if query:
-        body['query']['bool']['must'].append({
-            "multi_match": {
-                "query": query,
-                "fields": ["text", "user", "hashtags"],
-                "fuzziness": "AUTO"
-            }
-        })
-  
-  if user:
-    body['query']['bool']['filter'].append({
-      "term": {"userid.keyword": user}
-    })
-
-  # filter language
-  if tweet_language:
-    body["query"]["bool"]["filter"].append({
-       "term": {"tweet_language.keyword": tweet_language}
-    })
-
-  # add date range if requested
-  if from_date or to_date:
-    date_range = {}
-    if from_date:
-      date_range["gte"] = from_date
-    if to_date:
-      date_range["lte"] = to_date
-    
-    body['query']['bool']['filter'].append({
-      "range": {
-        "tweet_time": date_range
-      }
-    })
-
-  # filter hashtags using AND
-  for hashtag in hashtags:
-    body["query"]["bool"]["filter"].append({
-       "term": {"hashtags": hashtag}
-    })
-  
-  
-  results = client.search(index='tweets', body=body)
+  results = client.search(index='tweets_test1', body=query_body.get_query())
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
+    "tweets_over_time": results['aggregations']['tweets_over_time']['buckets'],
     "top_users": results['aggregations']['top_users']['buckets'],
     "top_hashtags": results['aggregations']['top_hashtags']['buckets'],
     "top_urls": results['aggregations']['top_urls']['buckets']
