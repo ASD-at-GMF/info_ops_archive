@@ -19,7 +19,7 @@ client = Elasticsearch([f'https://{os.getenv("ES_HOST")}:{os.getenv("ES_PORT")}'
                    basic_auth=(os.getenv("ES_USER"), os.getenv("ES_PASSWORD")),
                    verify_certs=False)
 
-
+index_name = 'ioa-tweets'
 
 @app.route('/')
 def hello_world():
@@ -84,7 +84,7 @@ def search_query():
   )
 
 
-  results = client.search(index='tweets_test1', body=query_body.get_query())
+  results = client.search(index=index_name, body=query_body.get_query())
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({
@@ -124,7 +124,7 @@ def get_insights():
     .agg_histogram(interval=interval)
   )
   
-  results = client.search(index='tweets_test1', body=query_body.get_query())
+  results = client.search(index=index_name, body=query_body.get_query())
 
   tweets = [hit['_source'] for hit in results['hits']['hits']]
   return jsonify({

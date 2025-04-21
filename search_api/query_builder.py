@@ -21,7 +21,7 @@ class ESQueryBuilder:
     self.body["size"] = size
     return self
 
-  def agg_users(self, field: str = "user_screen_name", size: int = 10, agg_name: str = "top_users"):
+  def agg_users(self, field: str = "user_screen_name.keyword", size: int = 10, agg_name: str = "top_users"):
     self.body["aggs"][agg_name] = {
       "terms": {
         "field": field,
@@ -31,7 +31,7 @@ class ESQueryBuilder:
     }
     return self
   
-  def agg_urls(self, field: str = "urls.keyword", size: int = 10, agg_name: str = "top_urls"):
+  def agg_urls(self, field: str = "urls", size: int = 10, agg_name: str = "top_urls"):
     self.body["aggs"][agg_name] = {
       "terms": {
         "field": field,
@@ -52,6 +52,8 @@ class ESQueryBuilder:
     return self
   
   def agg_histogram(self, field: str = "tweet_time", interval = "year", agg_name: str = "tweets_over_time"):
+    if interval is None:
+      interval = "year"
     self.body["aggs"][agg_name] = {
       "date_histogram": {
         "field": field,
