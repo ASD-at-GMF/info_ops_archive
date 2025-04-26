@@ -55,7 +55,22 @@ def mock_insights():
 @app.route('/search', methods=["GET"])
 def search_query():
   '''
-  Basic ES query given search query
+  Paginated tweet results based on query and filters
+
+  Args:
+    query: string to match to tweet text or other features (hashtags, users)
+    page: page number of results
+    size: number of tweets per page result
+    from_date: YYYY-MM-DD date of when tweets should appear after
+    to_date: YYYY-MM-DD date of when tweets should appear before
+    tweet_language: relevant language for results (en, es, etc)
+    hashtags: keyword match for hashtags contained in tweets
+    user: keyword match for userId
+    sort_param: how results should be sorted (likes, retweets, time, etc)
+
+  Returns:
+    JSON data of total number of results, and a paginated set of tweets
+    based on the page number and relevant filters
   '''
   query = request.args.get('query', '')
 
@@ -98,7 +113,20 @@ def search_query():
 @app.route('/insights', methods=["GET"])
 def get_insights():
   '''
-  ES aggregations based on search query
+  ES aggregations for statistics based on a search query
+
+  Args:
+    query: string to match to tweet text or other features (hashtags, users)
+    from_date: YYYY-MM-DD date of when tweets should appear after
+    to_date: YYYY-MM-DD date of when tweets should appear before
+    tweet_language: relevant language for results (en, es, etc)
+    hashtags: keyword match for hashtags contained in tweets
+    user: keyword match for userId
+    interval: how large the histogram buckets should be (year, month, week, etc)
+
+  Returns:
+    JSON data of top hashtags, users, and urls + histogram data for number
+    of tweets over time (in buckets)
   '''
   query = request.args.get('query', '')
 
